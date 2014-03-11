@@ -214,14 +214,14 @@ module.exports.prototype = {
         var item_groups = jsproj_xml.findall('ItemGroup');
         for (var i = 0, l = item_groups.length; i < l; i++) {
             var group = item_groups[i];
-            var files = group.findall('Content');
+            var files = group.findall('Content').concat(group.findall('TypeScriptCompile'));
             for (var j = 0, k = files.length; j < k; j++) {
                 var file = files[j];
                 if (file.attrib.Include.substr(0, 3) == 'www') {
                     // remove file reference
                     group.remove(0, file);
                     // remove ItemGroup if empty
-                    var new_group = group.findall('Content');
+                    var new_group = group.findall('Content').concat(group.findall('TypeScriptCompile'));
                     if(new_group.length < 1) {
                         jsproj_xml.getroot().remove(0, group);
                     }
@@ -234,10 +234,25 @@ module.exports.prototype = {
         var www_files = this.folder_contents('www', this.www_dir());
         for(file in www_files) {
             var item = new et.Element('ItemGroup');
-            var content = new et.Element('Content');
+            var isTypeScriptFile = www_files[file].indexOf('.ts', www_files[file].length - 3) > -1;
+            var content = new et.Element(isTypeScriptFile ? 'TypeScriptCompile' : 'Content');
             content.attrib.Include = www_files[file];
             item.append(content);
             jsproj_xml.getroot().append(item);
+
+            if (isTypeScriptFile) { // for typescript we need additional target
+                var target = "$(MSBuildExtensionsPath32)\\Microsoft\\VisualStudio\\v$(VisualStudioVersion)\\TypeScript\\Microsoft.TypeScript.targets"
+                if(jsproj_xml.getroot().findall('Import[@Project=\''+ target + '\']').length == 0) {
+                    var tsImport = new et.Element('Import');
+                    tsImport.attrib.Project = target;
+                    jsproj_xml.getroot().append(tsImport);
+
+                    // for win8 js apps we also need the following targets imported
+                    var tsImport2 = new et.Element('Import');
+                    tsImport2.attrib.Project = '$(MSBuildExtensionsPath32)\\Microsoft\\VisualStudio\\v$(VisualStudioVersion)\\TypeScript\\Microsoft.VisualStudio.$(WMSJSProject).targets';
+                    jsproj_xml.getroot().append(tsImport2);
+                }
+            }
         }
         // save file
         fs.writeFileSync(this.jsproj_path, jsproj_xml.write({indent:4}), 'utf-8');
